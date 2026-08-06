@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from router import router
+from routes import router
 
 app=FastAPI(
     title="KnowledgeOS",
