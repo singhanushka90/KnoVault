@@ -1,7 +1,9 @@
-from fastapi import APIRouter , HTTPException
+from fastapi import APIRouter , HTTPException , Depends
 from models import SignupRequest , LoginRequest
 from database import users_collection
-from auth import verify_password , create_access_token ,hash_password
+from fastapi.security import OAuth2PasswordRequestForm
+from auth import verify_password , create_access_token ,hash_password , get_current_user ,get_current_owner
+
 
 router=APIRouter()
 
@@ -23,7 +25,8 @@ def signup(user:SignupRequest):
     users_collection.insert_one({
         "name":user.username,
         "email":user.email,
-        "password":hashed_password
+        "password":hashed_password,
+        "role":"Owner"
     })
 
     return{
@@ -31,11 +34,11 @@ def signup(user:SignupRequest):
     }
 
 @router.post("/login")
-def login(user:LoginRequest):
-    db_user=users_collection.find_one({"email":user.email})
+def login(form_data:OAuth2PasswordRequestForm=Depends()):
+    db_user=users_collection.find_one({"email":form_data.username})
     if not db_user:
         raise HTTPException(status_code=401,detail="Invalid Email or password")
-    if not verify_password(user.password,db_user["password"]):
+    if not verify_password(form_data.password,db_user["password"]):
         raise HTTPException(status_code=401,detail="Invalid Email or password")
     data={
         "user_id":str(db_user["_id"]),
@@ -47,5 +50,14 @@ def login(user:LoginRequest):
         "token_type":"bearer"
     }
 
+
+@router.get("/profile")
+def profile(current_user=Depends(get_current_user)):
+    return current_user
+
+
+@router.post("/upload_documents")
+def upload_documents(current_user=Depends(get_current_owner)):
+    return {"message":"Upload allowed"}
 
 
