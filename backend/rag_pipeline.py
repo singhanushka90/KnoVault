@@ -11,11 +11,16 @@ from langchain_classic.retrievers import EnsembleRetriever
 from config import PINECONE_API_KEY, PINECONE_INDEX,GROQ_API_KEY
 from langchain_groq import ChatGroq
 from langchain_classic.retrievers.multi_query import MultiQueryRetriever
-
+from sentence_transformers import CrossEncoder
+from langchain_core.prompts import ChatPromptTemplate
 
 
 embedding = HuggingFaceEmbeddings(model_name="BAAI/bge-small-en-v1.5")
-llm = ChatGroq(model_name="llama-3.1-8b-instant",api_key=GROQ_API_KEY)
+
+llm = ChatGroq(model_name="openai/gpt-oss-20b",api_key=GROQ_API_KEY)
+
+reranker=CrossEncoder("BAAI/bge-reranker-base")
+
 pc = Pinecone(api_key=PINECONE_API_KEY)
 index = pc.Index(PINECONE_INDEX)
 
@@ -80,3 +85,112 @@ def multi_query_search(query,file_path,document_id):
     documents=multii_query_retriever.invoke(query)
     return documents
 
+def rerank_documents(query, documents, top_k=3):
+    pairs = []
+
+    for document in documents:
+        pairs.append([query,document.page_content])
+    scores = reranker.predict(pairs)
+
+    ranked_documents = sorted(zip(documents, scores),key=lambda x: x[1],reverse=True)
+    results = []
+    for document, score in ranked_documents[:top_k]:
+        document.metadata["rerank_score"] = float(score)
+
+        results.append(document)
+
+    return results
+
+def retrieve_and_rerank(query,file_path,document_id,top_k=3):
+
+    documents = multi_query_search(query,file_path,document_id)
+
+    ranked_documents = rerank_documents(
+        query,
+        documents,
+        top_k=top_k
+    )
+
+    return ranked_documents
+
+rag_prompt = ChatPromptTemplate.from_messages([
+
+    (
+        "system",
+        """
+You are an AI assistant for KnoVault.
+
+Answer the user's question ONLY using the provided context.
+
+Rules:
+1. Do not use outside knowledge.
+2. Do not make up information.
+3. If the answer is not present in the context,
+   say: "I don't know based on the uploaded documents."
+4. Keep the answer clear and concise.
+5. When possible, mention the source page.
+
+Context:
+{context}
+"""
+    ),
+
+    (
+        "human",
+        "{question}"
+    )
+
+])
+
+
+def build_context(documents):
+
+    context_parts = []
+
+    for document in documents:
+
+        text = document.page_content
+
+        source = document.metadata.get("source")
+        page = document.metadata.get("page")
+
+        context_parts.append(
+            f"""
+Source: {source}
+Page: {page}
+
+{text}
+"""
+        )
+
+    context = "\n\n".join(context_parts)
+
+    return context
+
+
+def generate_answer(
+    query,
+    file_path,
+    document_id
+):
+
+    documents = retrieve_and_rerank(
+        query,
+        file_path,
+        document_id,
+        top_k=3
+    )
+
+    context = build_context(documents)
+
+    messages = rag_prompt.format_messages(
+        context=context,
+        question=query
+    )
+
+    response = llm.invoke(messages)
+
+    return {
+        "answer": response.content,
+        "documents": documents
+    }
