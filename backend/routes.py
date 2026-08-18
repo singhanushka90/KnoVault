@@ -1,19 +1,20 @@
 from fastapi import APIRouter , HTTPException , Depends
 from models import SignupRequest , LoginRequest
 from database import users_collection
+import shutil
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi import UploadFile , File 
+import os
+from database import documents_collection
 from auth import verify_password , create_access_token ,hash_password , get_current_user ,get_current_owner
-
+from bson import ObjectId
+from document_loader import extract_text_from_pdf
 
 router=APIRouter()
 
 @router.get("/")
 def home():
     return {"message":"KnowledgeOS API running"}
-
-@router.get("/health")
-def health():
-    return {"status":"healthy"}
 
 
 @router.post("/signup")
@@ -57,7 +58,59 @@ def profile(current_user=Depends(get_current_user)):
 
 
 @router.post("/upload_documents")
-def upload_documents(current_user=Depends(get_current_owner)):
-    return {"message":"Upload allowed"}
+async def upload_document(
+    file: UploadFile = File(...),
+    current_user=Depends(get_current_owner)
+):
+    os.makedirs("uploads", exist_ok=True)
+
+    file_path = os.path.join("uploads", file.filename)
+
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    text=extract_text_from_pdf(file_path)
+
+    document = {
+        "filename": file.filename,
+        "file_path": file_path,
+        "content_type": file.content_type,
+        "uploaded_by": current_user["user_id"],
+        "status": "uploaded"
+    }
+
+    documents_collection.insert_one(document)
+
+    return {
+        "message": "File uploaded successfully",
+        "filename": file.filename
+    }
 
 
+@router.get("/documents")
+def get_document(current_user=Depends(get_current_owner)):
+    documents=list(documents_collection.find({"uploaded_by":current_user["user_id"]}))
+    for document in documents:
+        document["_id"]=str(document["_id"])
+    return documents
+
+
+@router.delete("/documents/{document_id}")
+def delete_documents(document_id:str,current_user=Depends(get_current_owner)):
+    document=documents_collection.find_one({"_id":ObjectId(document_id),
+    "uploaded_by":current_user["user_id"]})
+    if not document:
+        raise HTTPException(status_code=404,detail="Document not found")
+    file_path=document["file_path"]
+    if os.path.exists(file_path):
+        os.remove(file_path)
+    documents_collection.delete_one({"_id":ObjectId(document_id)})
+    return {"message":"Document deleted successfully"}
+
+
+@router.put("/documents/{doument_id}")
+def update_document(document_id:str,title:str,description:str,current_user=Depends(get_current_owner)):
+    document=documents_collection.find_one({"_id":ObjectId(document_id),"uploaded_by":current_user["user_id"]})
+    if not document:
+        raise HTTPException(status_code=404,detail="Document not found")
+    documents_collection.update_one({"_id":ObjectId(document_id)},{"$set":{"title":title,"description":description}})
+    return {"message":"Document updated successfully"}
