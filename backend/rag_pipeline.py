@@ -1,11 +1,10 @@
-import os
-
 from pypdf import PdfReader
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_pinecone import PineconeVectorStore
 from pinecone import Pinecone
+import uuid
 from langchain_community.retrievers import BM25Retriever
 from langchain_classic.retrievers import EnsembleRetriever
 from config import PINECONE_API_KEY, PINECONE_INDEX,GROQ_API_KEY
@@ -42,12 +41,34 @@ def load_pdf(file_path):
                 }
             )
             documents.append(document)
-        return documents
-    
+    return documents
+
 
 def split_documents(documents):
     chunks = splitter.split_documents(documents)
     return chunks
+
+
+def index_document(file_path, owner_id):
+    documents = load_pdf(file_path)
+    chunks = split_documents(documents)
+    if not chunks:
+        return {"error": "Document is empty"}
+    document_id = str(uuid.uuid4())
+    ids = []
+
+    for i, chunk in enumerate(chunks):
+
+        chunk.metadata["document_id"] = document_id
+        chunk.metadata["chunk_id"] = i
+        chunk.metadata["owner_id"] = owner_id
+        chunk.metadata["allowed_roles"] = ["Owner","HR","Employee"]
+        ids.append(f"{document_id}-chunk-{i}")
+
+    vectorstore.add_documents(documents=chunks,ids=ids)
+
+    return {"document_id": document_id,"vectors_stored": len(chunks)}
+    
 
 retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
 def retrieve_documents(query):
@@ -81,8 +102,8 @@ def create_multi_query_retreiver(file_path,document_id):
     return multi_query_retriever
 
 def multi_query_search(query,file_path,document_id):
-    multii_query_retriever= create_hybrid_retriever(file_path,document_id)
-    documents=multii_query_retriever.invoke(query)
+    multi_query_retriever= create_multi_query_retreiver(file_path,document_id)
+    documents=multi_query_retriever.invoke(query)
     return documents
 
 def rerank_documents(query, documents, top_k=3):
@@ -129,6 +150,7 @@ Rules:
    say: "I don't know based on the uploaded documents."
 4. Keep the answer clear and concise.
 5. When possible, mention the source page.
+6. Do not mention information that is not present in the context.
 
 Context:
 {context}
@@ -144,45 +166,26 @@ Context:
 
 
 def build_context(documents):
-
     context_parts = []
 
     for document in documents:
-
         text = document.page_content
-
         source = document.metadata.get("source")
         page = document.metadata.get("page")
 
         context_parts.append(
-            f"""
-Source: {source}
-Page: {page}
-
-{text}
-"""
-        )
+            f"""Source: {source}Page: {page}{text}""")
 
     context = "\n\n".join(context_parts)
 
     return context
 
 
-def generate_answer(
-    query,
-    file_path,
-    document_id
+def generate_answer(query,file_path,document_id
 ):
 
-    documents = retrieve_and_rerank(
-        query,
-        file_path,
-        document_id,
-        top_k=3
-    )
-
+    documents = retrieve_and_rerank(query,file_path,document_id,top_k=3)
     context = build_context(documents)
-
     messages = rag_prompt.format_messages(
         context=context,
         question=query
@@ -194,3 +197,4 @@ def generate_answer(
         "answer": response.content,
         "documents": documents
     }
+
