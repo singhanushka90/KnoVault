@@ -21,6 +21,7 @@ Vector Search + BM25
 📚 Context-based Answer Generation
 📌 Source page & rerank score returned with answers
 🏗️ Current RAG Pipeline
+
 PDF Upload
     ↓
 PDF Loader
@@ -54,6 +55,7 @@ Pinecone
        Sources + Page Numbers
 
 📁 Backend Structure
+
 KnoVault/
 │
 ├── backend/
