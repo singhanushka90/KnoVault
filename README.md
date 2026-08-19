@@ -52,3 +52,32 @@ Pinecone
         Grounded Answer
                 ↓
        Sources + Page Numbers
+
+📁 Backend Structure
+KnoVault/
+│
+├── backend/
+│   ├── auth.py
+│   ├── config.py
+│   ├── database.py
+│   ├── models.py
+│   ├── rag_pipeline.py
+│   ├── routes.py
+│   ├── main.py
+│   ├── requirements.txt
+│   ├── .env
+│   └── uploads/
+│
+├── frontend/
+│
+├── README.md
+└── .gitignore
+
+🔐 Authentication
+JWT-based authentication is implemented using:
+Password hashing with bcrypt
+JWT access tokens
+Token verification
+Current-user dependency
+Owner authorization dependency
+Example:
