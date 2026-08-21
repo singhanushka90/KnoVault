@@ -58,7 +58,7 @@ def profile(current_user=Depends(get_current_user)):
 
 
 @router.post("/upload_documents")
-async def upload_document(file: UploadFile = File(...),current_user=Depends(get_current_owner)):
+async def upload_document(file: UploadFile = File(...),current_user=Depends(require_role("Owner"))):
 
     os.makedirs("uploads", exist_ok=True)
 
@@ -100,7 +100,7 @@ async def upload_document(file: UploadFile = File(...),current_user=Depends(get_
 
 
 @router.get("/documents")
-def get_document(current_user=Depends(get_current_owner)):
+def get_document(current_user=Depends(reqiure_role("Owner","HR"))):
     documents=list(documents_collection.find({"uploaded_by":current_user["user_id"]}))
     for document in documents:
         document["_id"]=str(document["_id"])
@@ -108,7 +108,7 @@ def get_document(current_user=Depends(get_current_owner)):
 
 
 @router.delete("/documents/{document_id}")
-def delete_documents(document_id:str,current_user=Depends(get_current_owner)):
+def delete_documents(document_id:str,current_user=Depends(require_role("Owner"))):
     document=documents_collection.find_one({"_id":ObjectId(document_id),
     "uploaded_by":current_user["user_id"]})
     if not document:
@@ -121,7 +121,7 @@ def delete_documents(document_id:str,current_user=Depends(get_current_owner)):
 
 
 @router.put("/documents/{doument_id}")
-def update_document(document_id:str,title:str,description:str,current_user=Depends(get_current_owner)):
+def update_document(document_id:str,title:str,description:str,current_user=Depends(require_role("Owner"))):
     document=documents_collection.find_one({"_id":ObjectId(document_id),"uploaded_by":current_user["user_id"]})
     if not document:
         raise HTTPException(status_code=404,detail="Document not found")
@@ -130,8 +130,9 @@ def update_document(document_id:str,title:str,description:str,current_user=Depen
 
 
 @router.post("/ask")
-def ask_question(question:str,current_user=Depends(get_current_user)):
-    document=documents_collection.find_one({"uploaded_by":current_user["user_id"]})
+def ask_question(question:str,current_user=Depends(require_role("Owner","HR","Employee"))):
+    user_id=current_user["user_id"]
+    document=documents_collection.find_one({"uploaded_by":user_id})
     if not document:
         raise HTTPException(status_code=404,detail="Document not found")
     result=generate_answer(query=question,file_path=document["file_path"],document_id=str(document["_id"]))
