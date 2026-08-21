@@ -73,6 +73,20 @@ def delete_team_member(user_id:str,current_user=Depends(get_current_owner)):
         "message":"Team member deleted successfully"
     }
 
+
+@router.put("/team_members/{user_id}")
+def update_team_members(user_id:str,user:CreateTeamMemberRequest,current_user=Depends(get_current_owner)):
+    if user.role not in ["HR","Employee"]:
+        raise HTTPException(status_code=400,detail="Role must be HR or Employee")
+    existing_user=users_collection.find_one({"_id":ObjectId(user_id),"owner_id":current_user["user_id"]})
+    if not existing_user:
+        raise HTTPException(status_code=401,detail="Team member not found")
+    users_collection.update_one({"_id":ObjectId(user_id),"owner_id":current_user["user_id"]},
+                                {"$set":{"name":user.username,"email":user.email,"role":user.role}})
+
+    return {"message":"Team member updated successfully"}
+
+
 @router.post("/login")
 def login(form_data:OAuth2PasswordRequestForm=Depends()):
     db_user=users_collection.find_one({"email":form_data.username})
