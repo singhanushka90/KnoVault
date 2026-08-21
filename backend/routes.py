@@ -1,12 +1,12 @@
 from fastapi import APIRouter , HTTPException , Depends
-from models import SignupRequest , LoginRequest
+from models import SignupRequest , LoginRequest , CreateTeamMemberRequest
 from database import users_collection
 import shutil
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi import UploadFile , File 
 import os
 from database import documents_collection
-from auth import verify_password , create_access_token ,hash_password , get_current_user ,get_current_owner
+from auth import verify_password , create_access_token ,hash_password , get_current_user ,get_current_owner , require_role
 from bson import ObjectId
 from rag_pipeline import index_document , generate_answer
 
@@ -32,6 +32,45 @@ def signup(user:SignupRequest):
 
     return{
         "message":"User registered successfully"
+    }
+
+@router.post("/team-members")
+def create_team_member(user:CreateTeamMemberRequest,current_user=Depends(require_role("Owner"))):
+    if user.role not in ["HR","Employee"]:
+        raise HTTPException(status_code=400,detail="Role must be HR or Employee")
+    existing_user=users_collection.find_one({"email":user.email})
+    if existing_user:
+        raise HTTPException(status_code=400,detail="Email  already exists")
+    hashed_password=hash_password(user.password)
+    users_collection.insert_one({
+        "name":user.username,
+        "email":user.email,
+        "password":hashed_password,
+        "role":user.role,
+        "owner_id":current_user["user_id"]
+    })
+    return {
+        "message":f"{user.role} created successfully"
+    }
+
+@router.get("/team-members")
+def get_team_member(current_user=Depends(get_current_owner)):
+    members=list(
+        users_collection.find({"owner_id":current_user["user_id"]},{"password":0})
+    )
+    for member in members:
+        member["_id"]=str(member["_id"])
+    return members
+
+
+@router.delete("/team-members/{user_id}")
+def delete_team_member(user_id:str,current_user=Depends(get_current_owner)):
+    member=users_collection.find_one({"_id":ObjectId(user_id),"owner_id":current_user["user_id"]})
+    if not member:
+        raise HTTPException(status_code=401,detail="Team member not found")
+    users_collection.delete_one({"_id":ObjectId(user_id),"owner_id":current_user["user_id"]})
+    return {
+        "message":"Team member deleted successfully"
     }
 
 @router.post("/login")
@@ -100,7 +139,7 @@ async def upload_document(file: UploadFile = File(...),current_user=Depends(requ
 
 
 @router.get("/documents")
-def get_document(current_user=Depends(reqiure_role("Owner","HR"))):
+def get_document(current_user=Depends(require_role("Owner","HR"))):
     documents=list(documents_collection.find({"uploaded_by":current_user["user_id"]}))
     for document in documents:
         document["_id"]=str(document["_id"])

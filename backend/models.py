@@ -8,3 +8,9 @@ class SignupRequest(BaseModel):
 class LoginRequest(BaseModel):
     email:EmailStr
     password:str
+
+class CreateTeamMemberRequest(BaseModel):
+    username:str
+    email:EmailStr
+    password:str
+    role:str
