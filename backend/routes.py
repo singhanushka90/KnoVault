@@ -155,7 +155,7 @@ async def upload_document(file: UploadFile = File(...),current_user=Depends(requ
 
 @router.get("/documents")
 def get_document(current_user=Depends(require_role("Owner","HR"))):
-    documents=list(documents_collection.find({"uploaded_by":current_user["user_id"]}))
+    documents=list(documents_collection.find({"owner_id":current_user["user_id"]}))
     for document in documents:
         document["_id"]=str(document["_id"])
     return documents
