@@ -1,5 +1,5 @@
 from fastapi import APIRouter , HTTPException , Depends
-from models import SignupRequest , LoginRequest , CreateTeamMemberRequest
+from models import SignupRequest , CreateTeamMemberRequest
 from database import users_collection
 import shutil
 from fastapi.security import OAuth2PasswordRequestForm
@@ -96,7 +96,8 @@ def login(form_data:OAuth2PasswordRequestForm=Depends()):
         raise HTTPException(status_code=401,detail="Invalid Email or password")
     data={
         "user_id":str(db_user["_id"]),
-        "role":db_user["role"]
+        "role":db_user["role"],
+        "owner_id":db_user.get("owner_id",str(db_user["_id"]))
     }
     token=create_access_token(data)
     return {
@@ -184,8 +185,7 @@ def update_document(document_id:str,title:str,description:str,current_user=Depen
 
 @router.post("/ask")
 def ask_question(question:str,current_user=Depends(require_role("Owner","HR","Employee"))):
-    user_id=current_user["user_id"]
-    document=documents_collection.find_one({"uploaded_by":user_id})
+    document=documents_collection.find_one({"owner_id":current_user.get("owner_id",current_user["user_id"]),"allowed_roles":current_user["role"]})
     if not document:
         raise HTTPException(status_code=404,detail="Document not found")
     result=generate_answer(query=question,file_path=document["file_path"],document_id=str(document["_id"]))
