@@ -136,7 +136,7 @@ async def upload_document(file: UploadFile = File(...),current_user=Depends(requ
         "uploaded_by": current_user["user_id"],
         "owner_id": current_user["user_id"],
 
-        "allowed_roles": ["Owner","HR"],
+        "allowed_roles": ["Owner","HR","Employee"],
         "document_id": rag_result["document_id"],
         "vectors_stored": rag_result["vectors_stored"],
         "status": "indexed"
