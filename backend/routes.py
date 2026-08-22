@@ -136,7 +136,7 @@ async def upload_document(file: UploadFile = File(...),current_user=Depends(requ
         "uploaded_by": current_user["user_id"],
         "owner_id": current_user["user_id"],
 
-        "allowed_roles": ["Owner","HR","Employee"],
+        "allowed_roles": ["Owner","HR"],
         "document_id": rag_result["document_id"],
         "vectors_stored": rag_result["vectors_stored"],
         "status": "indexed"
@@ -185,9 +185,11 @@ def update_document(document_id:str,title:str,description:str,current_user=Depen
 
 @router.post("/ask")
 def ask_question(question:str,current_user=Depends(require_role("Owner","HR","Employee"))):
-    document=documents_collection.find_one({"owner_id":current_user.get("owner_id",current_user["user_id"]),"allowed_roles":current_user["role"]})
+    print("Current user:",current_user)
+    document=documents_collection.find_one({"owner_id":current_user["owner_id"],"allowed_roles":current_user["role"]})
+    print("Document found:",document)
     if not document:
-        raise HTTPException(status_code=404,detail="Document not found")
+        raise HTTPException(status_code=403,detail="You don't have access to this document")
     result=generate_answer(query=question,file_path=document["file_path"],document_id=str(document["_id"]))
     sources=[]
     for doc in result["documents"]:
