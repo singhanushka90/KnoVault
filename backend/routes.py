@@ -1,6 +1,6 @@
 from fastapi import APIRouter , HTTPException , Depends
 from models import SignupRequest , CreateTeamMemberRequest
-from database import users_collection
+from database import users_collection , chats_collection
 import shutil
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi import UploadFile , File 
@@ -237,12 +237,14 @@ async def replace_document(document_id:str,file:UploadFile=File(...),current_use
     
 
 @router.post("/ask")
-def ask_question(question:str,current_user=Depends(require_role("Owner","HR","Employee"))):
+def ask_question(question:str,conversation_id:str=None,current_user=Depends(require_role("Owner","HR","Employee"))):
     print("Current user:",current_user)
     document=documents_collection.find_one({"owner_id":current_user["owner_id"],"allowed_roles":current_user["role"]})
     print("Document found:",document)
     if not document:
         raise HTTPException(status_code=403,detail="You don't have access to this document")
+    if conversation_id is None:
+        conversation_id=str(uuid.uuid4())
     result=generate_answer(query=question,file_path=document["file_path"],document_id=document["document_id"])
     sources=[]
     for doc in result["documents"]:
@@ -251,7 +253,39 @@ def ask_question(question:str,current_user=Depends(require_role("Owner","HR","Em
             "source":doc.metadata.get("source"),
             "rerank_score":doc.metadata.get("rerank_score")
         })
+    chats_collection.insert_one({
+        "user_id":current_user["user_id"],
+        "owner_id":current_user["owner_id"],
+        "role":current_user["role"],
+        "conversation_id":conversation_id,
+        "question":question,
+        "document_id":document["document_id"],
+        "filename":document["filename"]
+    })
     return {
         "answer":result["answer"],
         "sources":sources
     }
+
+
+
+@router.get("/chats")
+def get_chats(current_user=Depends(require_role("Owner","HR","Employee"))):
+    chats=list(chats_collection.find({
+        "user_id":current_user["user_id"]
+    },
+    {
+        "_id":0
+    }).sort("_id",-1))
+    return chats
+
+
+@router.get("/company/chats")
+def get_company_chats(current_user=Depends(require_role("Owner"))):
+    chats=list(chats_collection.find({
+        "owner_id":current_user["user_id"]
+    },
+    {
+        "_id":0
+    }).sort("_id",-1))
+    return chats
