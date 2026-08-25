@@ -208,7 +208,7 @@ async def replace_document(document_id:str,file:UploadFile=File(...),current_use
     old_file_path=document["file_path"]
     if os.path.exists(old_file_path):
         os.remove(old_file_path)
-    documents_collection.update_one = (
+    documents_collection.update_one(
         {
             "_id":ObjectId(document_id)
         },
