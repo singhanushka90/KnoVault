@@ -140,7 +140,7 @@ async def upload_document(file: UploadFile = File(...),current_user=Depends(requ
         "uploaded_by": current_user["user_id"],
         "owner_id": current_user["user_id"],
 
-        "allowed_roles": ["Owner","HR","Employee"],
+        "allowed_roles": ["Owner","HR",],
         "document_id": rag_result["document_id"],
         "vectors_stored": rag_result["vectors_stored"],
         "status": "indexed"
@@ -188,7 +188,9 @@ def update_document(document_id:str,title:str,description:str,current_user=Depen
     documents_collection.update_one({"_id":ObjectId(document_id)},{"$set":{"title":title,"description":description}})
     return {"message":"Document updated successfully"}
 
-@router.put("documents/{document_id}/file")
+
+
+@router.put("/documents/{document_id}/file")
 async def replace_document(document_id:str,file:UploadFile=File(...),current_user=Depends(require_role("Owner"))):
     document=documents_collection.find_one({"_id":ObjectId(document_id),"uploaded_by":current_user["user_id"]})
     if not document:
@@ -206,8 +208,9 @@ async def replace_document(document_id:str,file:UploadFile=File(...),current_use
     old_file_path=document["file_path"]
     if os.path.exists(old_file_path):
         os.remove(old_file_path)
-    documents_collection.update_one = ({
-        "_id":ObjectId(document_id)
+    documents_collection.update_one = (
+        {
+            "_id":ObjectId(document_id)
         },
         {
             "$set":{
@@ -216,17 +219,17 @@ async def replace_document(document_id:str,file:UploadFile=File(...),current_use
                 "content_type": file.content_type,
                 "uploaded_by": current_user["user_id"],
                 "document_id": rag_result["document_id"],
+                "owner_id":current_user["user_id"],
                 "vectors_stored": rag_result["vectors_stored"],
                 "status": "indexed"
                 }
         }
     )
     return {
-    
-            "message": "Document replaced and indexed successfully",
-            "filename": file.filename,
-            "document_id": rag_result["document_id"],
-            "vectors_stored": rag_result["vectors_stored"]
+        "message": "Document replaced and indexed successfully",
+        "filename": file.filename,
+        "document_id": rag_result["document_id"],
+        "vectors_stored": rag_result["vectors_stored"]
         }
     
     
@@ -240,7 +243,7 @@ def ask_question(question:str,current_user=Depends(require_role("Owner","HR","Em
     print("Document found:",document)
     if not document:
         raise HTTPException(status_code=403,detail="You don't have access to this document")
-    result=generate_answer(query=question,file_path=document["file_path"],document_id=["document_id"])
+    result=generate_answer(query=question,file_path=document["file_path"],document_id=document["document_id"])
     sources=[]
     for doc in result["documents"]:
         sources.append({
