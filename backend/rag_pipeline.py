@@ -68,12 +68,21 @@ def index_document(file_path, owner_id):
     vectorstore.add_documents(documents=chunks,ids=ids)
 
     return {"document_id": document_id,"vectors_stored": len(chunks)}
-    
 
-retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
-def retrieve_documents(query):
-    documents = retriever.invoke(query)
-    return documents
+
+#This is for RAG id
+def delete_documents_vectors(document_id):
+    index.delete(filter={"document_id":document_id})
+    return True
+
+
+
+def create_vector_retriever(document_id):
+    print(document_id)
+    print(type(document_id))
+    return vectorstore.as_retriever(search_kwargs={"k": 5,"filter":{"document_id":{"$eq":str(document_id)}}})
+
+
 
 def create_bm25_retriever(file_path, document_id):
     documents = load_pdf(file_path)
@@ -92,8 +101,9 @@ def create_bm25_retriever(file_path, document_id):
 def create_hybrid_retriever(file_path,document_id):
 
     bm25 = create_bm25_retriever(file_path,document_id)
+    vector_retriever=create_vector_retriever(document_id)
 
-    hybrid_retriever = EnsembleRetriever(retrievers=[retriever,bm25],weights=[0.6,0.4])
+    hybrid_retriever = EnsembleRetriever(retrievers=[vector_retriever,bm25],weights=[0.6,0.4])
     return hybrid_retriever
 
 def create_multi_query_retreiver(file_path,document_id):

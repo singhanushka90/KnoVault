@@ -8,7 +8,8 @@ import os
 from database import documents_collection
 from auth import verify_password , create_access_token ,hash_password , get_current_user ,get_current_owner , require_role
 from bson import ObjectId
-from rag_pipeline import index_document , generate_answer
+from rag_pipeline import index_document , generate_answer , delete_documents_vectors
+import uuid
 
 router=APIRouter()
 
@@ -89,7 +90,9 @@ def update_team_members(user_id:str,user:CreateTeamMemberRequest,current_user=De
 
 @router.post("/login")
 def login(form_data:OAuth2PasswordRequestForm=Depends()):
+  
     db_user=users_collection.find_one({"email":form_data.username})
+
     if not db_user:
         raise HTTPException(status_code=401,detail="Invalid Email or password")
     if not verify_password(form_data.password,db_user["password"]):
@@ -117,7 +120,8 @@ async def upload_document(file: UploadFile = File(...),current_user=Depends(requ
     os.makedirs("uploads", exist_ok=True)
 
     file_path = os.path.join("uploads",file.filename)
-    with open(file_path, "wb") as buffer:shutil.copyfileobj(file.file,buffer)
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file,buffer)
     rag_result = index_document(file_path,owner_id=current_user["user_id"])
 
     if "error" in rag_result:
@@ -167,11 +171,13 @@ def delete_documents(document_id:str,current_user=Depends(require_role("Owner"))
     "uploaded_by":current_user["user_id"]})
     if not document:
         raise HTTPException(status_code=404,detail="Document not found")
+    rag_document_id=document["document_id"]
+    delete_documents_vectors(rag_document_id)
     file_path=document["file_path"]
     if os.path.exists(file_path):
         os.remove(file_path)
     documents_collection.delete_one({"_id":ObjectId(document_id)})
-    return {"message":"Document deleted successfully"}
+    return {"message":"Document and its vectors deleted successfully"}
 
 
 @router.put("/documents/{doument_id}")
@@ -182,6 +188,50 @@ def update_document(document_id:str,title:str,description:str,current_user=Depen
     documents_collection.update_one({"_id":ObjectId(document_id)},{"$set":{"title":title,"description":description}})
     return {"message":"Document updated successfully"}
 
+@router.put("documents/{document_id}/file")
+async def replace_document(document_id:str,file:UploadFile=File(...),current_user=Depends(require_role("Owner"))):
+    document=documents_collection.find_one({"_id":ObjectId(document_id),"uploaded_by":current_user["user_id"]})
+    if not document:
+        raise HTTPException(status_code=404,detail="Document not found")
+    os.makedirs("uploads",exist_ok=True)
+    new_file_path=os.path.join("uploads",f"{uuid.uuid4()}_{file.filename}")
+    with open(new_file_path,"wb") as buffer:
+        shutil.copyfileobj(file.file,buffer)
+    rag_result = index_document(new_file_path,owner_id=current_user["user_id"])
+    if "error" in rag_result:
+        if os.path.exists(new_file_path):
+            os.remove(new_file_path)
+        raise HTTPException(status_code=400,detail=rag_result["error"])
+    delete_documents_vectors(document["document_id"])
+    old_file_path=document["file_path"]
+    if os.path.exists(old_file_path):
+        os.remove(old_file_path)
+    documents_collection.update_one = ({
+        "_id":ObjectId(document_id)
+        },
+        {
+            "$set":{
+                "filename": file.filename,
+                "file_path": new_file_path,
+                "content_type": file.content_type,
+                "uploaded_by": current_user["user_id"],
+                "document_id": rag_result["document_id"],
+                "vectors_stored": rag_result["vectors_stored"],
+                "status": "indexed"
+                }
+        }
+    )
+    return {
+    
+            "message": "Document replaced and indexed successfully",
+            "filename": file.filename,
+            "document_id": rag_result["document_id"],
+            "vectors_stored": rag_result["vectors_stored"]
+        }
+    
+    
+
+    
 
 @router.post("/ask")
 def ask_question(question:str,current_user=Depends(require_role("Owner","HR","Employee"))):
@@ -190,7 +240,7 @@ def ask_question(question:str,current_user=Depends(require_role("Owner","HR","Em
     print("Document found:",document)
     if not document:
         raise HTTPException(status_code=403,detail="You don't have access to this document")
-    result=generate_answer(query=question,file_path=document["file_path"],document_id=str(document["_id"]))
+    result=generate_answer(query=question,file_path=document["file_path"],document_id=["document_id"])
     sources=[]
     for doc in result["documents"]:
         sources.append({
