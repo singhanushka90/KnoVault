@@ -245,6 +245,23 @@ def ask_question(question:str,conversation_id:str=None,current_user=Depends(requ
         raise HTTPException(status_code=403,detail="You don't have access to this document")
     if conversation_id is None:
         conversation_id=str(uuid.uuid4())
+    chat_history=list(
+        chats_collection.find(
+            {
+                "conversation_id":conversation_id,"user_id":current_user["user_id"]
+            },
+            {
+                "_id":0,
+                "question":1,
+                "answer":1
+            }
+        ).sort("_id",1)
+    )
+    history_text=""
+    for chat in chat_history:
+        history_text+=f"""User:{chat.get("question","")}Assistant:{chat.get("answer","")}"""
+    print("CHAT HISTORY:")
+    print(history_text)
     result=generate_answer(query=question,file_path=document["file_path"],document_id=document["document_id"])
     sources=[]
     for doc in result["documents"]:
@@ -259,6 +276,7 @@ def ask_question(question:str,conversation_id:str=None,current_user=Depends(requ
         "role":current_user["role"],
         "conversation_id":conversation_id,
         "question":question,
+        "answer":result["answer"],
         "document_id":document["document_id"],
         "filename":document["filename"]
     })
@@ -289,3 +307,4 @@ def get_company_chats(current_user=Depends(require_role("Owner"))):
         "_id":0
     }).sort("_id",-1))
     return chats
+
