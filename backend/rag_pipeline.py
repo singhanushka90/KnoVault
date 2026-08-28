@@ -164,6 +164,8 @@ Rules:
 
 Context:
 {context}
+Chat History:
+{history}
 """
     ),
 
@@ -191,14 +193,14 @@ def build_context(documents):
     return context
 
 
-def generate_answer(query,file_path,document_id
-):
+def generate_answer(query,file_path,document_id,history_text=""):
 
     documents = retrieve_and_rerank(query,file_path,document_id,top_k=3)
     context = build_context(documents)
     messages = rag_prompt.format_messages(
         context=context,
-        question=query
+        question=query,
+        history=history_text
     )
 
     response = llm.invoke(messages)

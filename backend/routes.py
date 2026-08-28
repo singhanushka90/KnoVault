@@ -17,7 +17,6 @@ router=APIRouter()
 def home():
     return {"message":"KnowledgeOS API running"}
 
-
 @router.post("/signup")
 def signup(user:SignupRequest):
     existing_user=users_collection.find_one({"email":user.email})
@@ -262,7 +261,7 @@ def ask_question(question:str,conversation_id:str=None,current_user=Depends(requ
         history_text+=f"""User:{chat.get("question","")}Assistant:{chat.get("answer","")}"""
     print("CHAT HISTORY:")
     print(history_text)
-    result=generate_answer(query=question,file_path=document["file_path"],document_id=document["document_id"])
+    result=generate_answer(query=question,file_path=document["file_path"],document_id=document["document_id"],history_text=history_text)
     sources=[]
     for doc in result["documents"]:
         sources.append({
@@ -297,7 +296,29 @@ def get_chats(current_user=Depends(require_role("Owner","HR","Employee"))):
     }).sort("_id",-1))
     return chats
 
+@router.get("/chats/{conversation_id}")
+def get_conversation(
+    conversation_id: str,
+    current_user=Depends(require_role("Owner", "HR", "Employee"))
+):
+    print("Conversation ID:", repr(conversation_id))
+    print("TOTAL CHATS:", chats_collection.count_documents({}))
 
+    all_chats = list(
+        chats_collection.find(
+            {},
+            {
+                "_id": 0,
+                "conversation_id": 1,
+                "user_id": 1
+            }
+        )
+    )
+
+    print("ALL CHAT IDS:")
+    print(all_chats)
+
+    return all_chats
 @router.get("/company/chats")
 def get_company_chats(current_user=Depends(require_role("Owner"))):
     chats=list(chats_collection.find({
