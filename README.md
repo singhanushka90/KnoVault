@@ -75,6 +75,8 @@ Vector Search + BM25
 📁 Backend Structure
 
 
+
+
 KnoVault/
 │
 ├── backend/
