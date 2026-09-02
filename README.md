@@ -88,4 +88,4 @@ JWT access tokens
 Token verification
 Current-user dependency
 Owner authorization dependency
-Example:
+
