@@ -5,23 +5,38 @@ KnoVault is an AI-powered document knowledge platform that allows users to uploa
 🚀 Current Features
 
 🔐 JWT Authentication
+
 👤 User Signup & Login
+
 🛡️ Role-Based Access Control (RBAC)
 Owner role implemented
 Owner-only document management
+
 📄 PDF Upload
+
 🗄️ MongoDB document metadata storage
+
 🧠 HuggingFace BGE Embeddings
+
 🌲 Pinecone Vector Database
+
 🔎 Semantic Vector Search
+
 🔤 BM25 Keyword Search
+
 🔀 Hybrid Search
 Vector Search + BM25
+
 🔁 Multi-Query Retrieval
+
 🎯 Cross-Encoder Reranking
+
 🤖 Groq LLM
+
 📚 Context-based Answer Generation
+
 📌 Source page & rerank score returned with answers
+
 🏗️ Current RAG Pipeline
 
            PDF Upload
