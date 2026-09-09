@@ -83,23 +83,33 @@ KnoVault/
 ├── backend/
 
 │   ├── auth.py
+
 │   ├── config.py
 
 │   ├── database.py
+
 │   ├── models.py
+
 │   ├── rag_pipeline.py
 
+
 │   ├── routes.py
+
 │   ├── main.py
+
 │   ├── requirements.txt
 
+
 │   ├── .env
+
 │   └── uploads/
+
 
 │
 ├── frontend/
 │
 ├── README.md
+
 └── .gitignore
 
 🔐 Authentication
