@@ -107,8 +107,10 @@ KnoVault/
 
 │
 ├── frontend/
+
 │
 ├── README.md
+
 
 └── .gitignore
 
