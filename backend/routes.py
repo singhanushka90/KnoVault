@@ -301,24 +301,34 @@ def get_conversation(
     conversation_id: str,
     current_user=Depends(require_role("Owner", "HR", "Employee"))
 ):
-    print("Conversation ID:", repr(conversation_id))
-    print("TOTAL CHATS:", chats_collection.count_documents({}))
-
-    all_chats = list(
+    chats = list(
         chats_collection.find(
-            {},
+            {
+                "conversation_id": conversation_id,
+                "user_id": current_user["user_id"]
+            },
             {
                 "_id": 0,
-                "conversation_id": 1,
-                "user_id": 1
+                "question": 1,
+                "answer": 1,
+                "role": 1,
+                "document_id": 1,
+                "filename": 1
             }
-        )
+        ).sort("_id", 1)
     )
 
-    print("ALL CHAT IDS:")
-    print(all_chats)
+    if not chats:
+        raise HTTPException(
+            status_code=404,
+            detail="Conversation not found"
+        )
 
-    return all_chats
+    return {
+        "conversation_id": conversation_id,
+        "messages": chats
+    }
+
 @router.get("/company/chats")
 def get_company_chats(current_user=Depends(require_role("Owner"))):
     chats=list(chats_collection.find({
