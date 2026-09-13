@@ -9,6 +9,7 @@ from database import documents_collection
 from auth import verify_password , create_access_token ,hash_password , get_current_user ,get_current_owner , require_role
 from bson import ObjectId
 from rag_pipeline import index_document , generate_answer , delete_documents_vectors
+from document_access import filter_documents_for_role
 import uuid
 
 router=APIRouter()
@@ -137,9 +138,9 @@ async def upload_document(file: UploadFile = File(...),current_user=Depends(requ
         "content_type": file.content_type,
 
         "uploaded_by": current_user["user_id"],
-        "owner_id": current_user["user_id"],
+        "owner_id": current_user["owner_id"],
 
-        "allowed_roles": ["Owner","HR",],
+        "allowed_roles": ["Owner", "HR", "Employee"],
         "document_id": rag_result["document_id"],
         "vectors_stored": rag_result["vectors_stored"],
         "status": "indexed"
@@ -157,8 +158,11 @@ async def upload_document(file: UploadFile = File(...),current_user=Depends(requ
 
 
 @router.get("/documents")
-def get_document(current_user=Depends(require_role("Owner","HR"))):
-    documents=list(documents_collection.find({"owner_id":current_user["user_id"]}))
+def get_document(current_user=Depends(require_role("Owner","HR","Employee"))):
+    documents=list(documents_collection.find({
+        "owner_id": current_user["owner_id"],
+        "allowed_roles": {"$in": [current_user["role"]]}
+    }))
     for document in documents:
         document["_id"]=str(document["_id"])
     return documents
@@ -238,12 +242,18 @@ async def replace_document(document_id:str,file:UploadFile=File(...),current_use
 @router.post("/ask")
 def ask_question(question:str,conversation_id:str=None,current_user=Depends(require_role("Owner","HR","Employee"))):
     print("Current user:",current_user)
-    document=documents_collection.find_one({"owner_id":current_user["owner_id"],"allowed_roles":current_user["role"]})
-    print("Document found:",document)
-    if not document:
-        raise HTTPException(status_code=403,detail="You don't have access to this document")
+    documents = list(documents_collection.find({
+        "owner_id": current_user["owner_id"],
+        "allowed_roles": {"$in": [current_user["role"]]}
+    }))
+
+    accessible_documents = filter_documents_for_role(documents, current_user["role"])
+    if not accessible_documents:
+        raise HTTPException(status_code=403,detail="You don't have access to any document")
+
     if conversation_id is None:
         conversation_id=str(uuid.uuid4())
+
     chat_history=list(
         chats_collection.find(
             {
@@ -261,7 +271,14 @@ def ask_question(question:str,conversation_id:str=None,current_user=Depends(requ
         history_text+=f"""User:{chat.get("question","")}Assistant:{chat.get("answer","")}"""
     print("CHAT HISTORY:")
     print(history_text)
-    result=generate_answer(query=question,file_path=document["file_path"],document_id=document["document_id"],history_text=history_text)
+
+    result = generate_answer(
+        query=question,
+        document_records=accessible_documents,
+        history_text=history_text
+    )
+
+    first_document = accessible_documents[0]
     sources=[]
     for doc in result["documents"]:
         sources.append({
@@ -269,6 +286,7 @@ def ask_question(question:str,conversation_id:str=None,current_user=Depends(requ
             "source":doc.metadata.get("source"),
             "rerank_score":doc.metadata.get("rerank_score")
         })
+
     chats_collection.insert_one({
         "user_id":current_user["user_id"],
         "owner_id":current_user["owner_id"],
@@ -276,9 +294,10 @@ def ask_question(question:str,conversation_id:str=None,current_user=Depends(requ
         "conversation_id":conversation_id,
         "question":question,
         "answer":result["answer"],
-        "document_id":document["document_id"],
-        "filename":document["filename"]
+        "document_id":first_document["document_id"],
+        "filename":first_document["filename"]
     })
+
     return {
         "answer":result["answer"],
         "sources":sources

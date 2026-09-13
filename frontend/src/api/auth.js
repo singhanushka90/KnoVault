@@ -14,4 +14,6 @@ export const authApi = {
   signup: (payload) => api.post('/signup', payload),
   profile: () => api.get('/profile'),
   getTeamMembers: () => api.get('/team-members'),
+  createTeamMember: (payload) => api.post('/team-members', payload),
+  deleteTeamMember: (userId) => api.delete(`/team-members/${userId}`)
 }

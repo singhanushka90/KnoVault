@@ -18,8 +18,8 @@ export default function ChatWindow() {
   const [error, setError] = useState('')
 
   const newConversation = async () => {
-    const newConvId = crypto.randomUUID()
-    setConversationId(newConvId)
+    const newId = crypto.randomUUID()
+    setConversationId(newId)
     setMessages([])
   }
 
@@ -45,11 +45,21 @@ export default function ChatWindow() {
   const loadConversation = async (id) => {
     if (!id) return
     setLoading(true)
+    setError('')
     try {
       const response = await chatApi.getConversation(id)
       const conversation = response.data
       setConversationId(conversation.conversation_id)
-      setMessages(conversation.messages || [])
+      const normalizedMessages = (conversation.messages || []).map((msg) => ({
+        ...msg,
+        question: msg.question || '',
+        answer: msg.answer || '',
+        filename: msg.filename || '',
+        sources: msg.sources || [],
+        content: msg.answer || msg.question || '',
+        timestamp: msg.timestamp || ''
+      }))
+      setMessages(normalizedMessages)
     } catch (err) {
       setError(err.response?.data?.detail || 'Conversation not found')
     } finally {
@@ -60,27 +70,40 @@ export default function ChatWindow() {
   const sendQuestion = async (question) => {
     if (!question.trim()) return
 
+    const activeConversationId = conversationId || crypto.randomUUID()
+    if (!conversationId) {
+      setConversationId(activeConversationId)
+    }
+
     setLoading(true)
     setError('')
     try {
-      const response = await chatApi.ask({ question, conversation_id: conversationId || undefined })
-      const newMessage = {
-        question,
-        answer: response.data.answer,
-        sources: response.data.sources || [],
+      const userMessage = {
+        conversation_id: activeConversationId,
         role: 'user',
-        filename: response.data.filename || '',
+        question,
+        answer: '',
         timestamp: new Date().toLocaleTimeString(),
-        conversation_id: conversationId || ''
+        sources: []
       }
 
-      setMessages((prev) => [...prev, newMessage])
+      setMessages((prev) => [...prev, userMessage])
 
-      if (!conversationId) {
-        const generated = response.request?._headers?.['x-conversation-id'] || crypto.randomUUID()
-        setConversationId(generated)
+      const response = await chatApi.ask({ question, conversation_id: activeConversationId })
+      const backendAnswer = response.data.answer || ''
+      const backendSources = response.data.sources || []
+
+      const assistantMessage = {
+        conversation_id: activeConversationId,
+        role: 'assistant',
+        question: '',
+        answer: backendAnswer,
+        sources: backendSources,
+        filename: '',
+        timestamp: new Date().toLocaleTimeString()
       }
 
+      setMessages((prev) => [...prev, assistantMessage])
       await loadHistory()
     } catch (err) {
       setError(err.response?.data?.detail || 'Unable to send question')
@@ -126,7 +149,7 @@ export default function ChatWindow() {
               <p>Ask a question about your documents and source-backed answers will appear here.</p>
             </div>
           ) : (
-            messages.map((message, index) => <ChatMessage key={index} message={message} />)
+            messages.map((message, index) => <ChatMessage key={`${message.conversation_id || index}-${index}`} message={message} />)
           )}
           {loading && <Loading label="Thinking..." />}
         </div>

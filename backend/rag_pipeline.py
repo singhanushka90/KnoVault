@@ -27,6 +27,43 @@ vectorstore = PineconeVectorStore(index=index,embedding=embedding)
 
 splitter = RecursiveCharacterTextSplitter(chunk_size=1000,chunk_overlap=200)
 
+
+def filter_documents_for_role(documents, role):
+    """Return only the document records whose access role array includes the requested role."""
+    return [
+        document for document in documents
+        if role in document.get("allowed_roles", [])
+    ]
+
+
+def _as_list(value):
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return list(value)
+    return [value]
+
+
+def normalize_document_inputs(file_path=None, document_id=None, document_records=None):
+    """Accept the old single-document signature or a document-record list and return parallel arrays.
+
+    Returns (file_paths, document_ids)
+    """
+    if document_records:
+        file_paths = []
+        document_ids = []
+        for record in document_records:
+            file_path_value = record.get("file_path")
+            document_id_value = record.get("document_id")
+            if file_path_value and document_id_value:
+                file_paths.append(file_path_value)
+                document_ids.append(str(document_id_value))
+        return file_paths, document_ids
+
+    file_paths = _as_list(file_path)
+    document_ids = _as_list(document_id)
+    return file_paths, [str(item) for item in document_ids]
+
 def load_pdf(file_path):
     reader = PdfReader(file_path)
     documents = []
@@ -77,42 +114,52 @@ def delete_documents_vectors(document_id):
 
 
 
-def create_vector_retriever(document_id):
-    print(document_id)
-    print(type(document_id))
-    return vectorstore.as_retriever(search_kwargs={"k": 5,"filter":{"document_id":{"$eq":str(document_id)}}})
+def create_vector_retriever(document_ids):
+    normalized_ids = _as_list(document_ids)
+    if len(normalized_ids) == 1:
+        return vectorstore.as_retriever(search_kwargs={"k": 5, "filter": {"document_id": {"$eq": str(normalized_ids[0])}}})
+
+    return vectorstore.as_retriever(search_kwargs={"k": 5, "filter": {"document_id": {"$in": [str(doc_id) for doc_id in normalized_ids]}}})
 
 
+def create_bm25_retriever(file_paths, document_ids):
+    file_paths = _as_list(file_paths)
+    document_ids = _as_list(document_ids)
 
-def create_bm25_retriever(file_path, document_id):
-    documents = load_pdf(file_path)
+    if len(file_paths) != len(document_ids):
+        raise ValueError("file_paths and document_ids must have the same number of entries")
 
-    chunks = split_documents(documents)
+    all_chunks = []
+    for i, file_path in enumerate(file_paths):
+        documents = load_pdf(file_path)
+        chunks = split_documents(documents)
 
-    for i, chunk in enumerate(chunks):
+        for j, chunk in enumerate(chunks):
+            chunk.metadata["chunk_id"] = j
+            chunk.metadata["document_id"] = str(document_ids[i])
+            chunk.metadata["source"] = file_path
 
-        chunk.metadata["chunk_id"] = i
-        chunk.metadata["document_id"] = document_id
+        all_chunks.extend(chunks)
 
-    bm25 = BM25Retriever.from_documents(chunks)
+    bm25 = BM25Retriever.from_documents(all_chunks)
     bm25.k = 5
     return bm25
 
-def create_hybrid_retriever(file_path,document_id):
+def create_hybrid_retriever(file_paths,document_ids):
 
-    bm25 = create_bm25_retriever(file_path,document_id)
-    vector_retriever=create_vector_retriever(document_id)
+    bm25 = create_bm25_retriever(file_paths,document_ids)
+    vector_retriever=create_vector_retriever(document_ids)
 
     hybrid_retriever = EnsembleRetriever(retrievers=[vector_retriever,bm25],weights=[0.6,0.4])
     return hybrid_retriever
 
-def create_multi_query_retreiver(file_path,document_id):
-    hybrid_retriever = create_hybrid_retriever(file_path,document_id)
+def create_multi_query_retreiver(file_paths,document_ids):
+    hybrid_retriever = create_hybrid_retriever(file_paths,document_ids)
     multi_query_retriever=MultiQueryRetriever.from_llm(retriever=hybrid_retriever,llm=llm)
     return multi_query_retriever
 
-def multi_query_search(query,file_path,document_id):
-    multi_query_retriever= create_multi_query_retreiver(file_path,document_id)
+def multi_query_search(query,file_paths,document_ids):
+    multi_query_retriever= create_multi_query_retreiver(file_paths,document_ids)
     documents=multi_query_retriever.invoke(query)
     return documents
 
@@ -132,9 +179,9 @@ def rerank_documents(query, documents, top_k=3):
 
     return results
 
-def retrieve_and_rerank(query,file_path,document_id,top_k=3):
+def retrieve_and_rerank(query,file_paths,document_ids,top_k=3):
 
-    documents = multi_query_search(query,file_path,document_id)
+    documents = multi_query_search(query,file_paths,document_ids)
 
     ranked_documents = rerank_documents(
         query,
@@ -193,9 +240,23 @@ def build_context(documents):
     return context
 
 
-def generate_answer(query,file_path,document_id,history_text=""):
+def generate_answer(query,file_path=None,document_id=None,history_text="",document_records=None):
+    """Generate an answer from one or more uploaded documents. The older
+    single-document signature remains supported for backwards compatibility.
+    """
+    file_paths, document_ids = normalize_document_inputs(
+        file_path=file_path,
+        document_id=document_id,
+        document_records=document_records,
+    )
 
-    documents = retrieve_and_rerank(query,file_path,document_id,top_k=3)
+    if not file_paths or not document_ids:
+        return {
+            "answer": "I don't know based on the uploaded documents.",
+            "documents": []
+        }
+
+    documents = retrieve_and_rerank(query, file_paths, document_ids, top_k=3)
     context = build_context(documents)
     messages = rag_prompt.format_messages(
         context=context,

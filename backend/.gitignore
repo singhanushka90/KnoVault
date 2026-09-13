@@ -2,3 +2,11 @@
 __pycache__/
 uploads/
 test.py
+test_regression.py
+*.log
+*.pyc
+.DS_Store
+gitignore/
+.vscode/
+chat-session-resources/
+call_*/
