@@ -23,7 +23,8 @@ export default function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/chat" element={<Chat />} />
           <Route path="/chat/:conversationId" element={<Chat />} />
-          <Route path="/documents" element={<Documents />} />
+          <Route path="/documents" element={<ProtectedRoute allowedRoles={['Owner', 'HR']}><Documents /></ProtectedRoute>} />
+          <Route path="/upload-documents" element={<ProtectedRoute allowedRoles={['Owner']}><Documents uploadMode /></ProtectedRoute>} />
           <Route path="/history" element={<ChatHistory />} />
           <Route path="/team" element={<ProtectedRoute allowedRoles={['Owner']}><TeamMembers /></ProtectedRoute>} />
           <Route path="/profile" element={<Profile />} />
