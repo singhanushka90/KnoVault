@@ -4,6 +4,27 @@ import { chatApi } from '../api/chat.js'
 import Loading from '../components/Loading.jsx'
 import ErrorMessage from '../components/ErrorMessage.jsx'
 
+const groupConversations = (items = []) => {
+  const grouped = new Map()
+
+  items.forEach((chat) => {
+    if (!chat?.conversation_id) return
+    const conversation = grouped.get(chat.conversation_id) || []
+    conversation.push(chat)
+    grouped.set(chat.conversation_id, conversation)
+  })
+
+  return [...grouped.entries()]
+    .map(([conversationId, entries]) => ({
+      conversation_id: conversationId,
+      title: entries.find((entry) => entry?.question)?.question || 'Untitled conversation',
+      messageCount: entries.length,
+      role: entries[0]?.role || 'Employee',
+      entries
+    }))
+    .sort((a, b) => b.messageCount - a.messageCount)
+}
+
 export default function ChatHistory() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -25,6 +46,8 @@ export default function ChatHistory() {
     loadHistory()
   }, [])
 
+  const grouped = groupConversations(items)
+
   return (
     <div className="history-page">
       <section className="page-head">
@@ -38,7 +61,7 @@ export default function ChatHistory() {
 
       {loading ? (
         <Loading label="Loading chat history..." />
-      ) : items.length === 0 ? (
+      ) : grouped.length === 0 ? (
         <div className="empty-state">
           <History size={40} />
           <h3>No conversation history</h3>
@@ -46,13 +69,13 @@ export default function ChatHistory() {
         </div>
       ) : (
         <div className="history-list">
-          {items.map((chat, idx) => (
-            <article className="history-card" key={idx}>
+          {grouped.map((conversation) => (
+            <article className="history-card" key={conversation.conversation_id}>
               <div className="history-icon"><MessageCircle size={18} /></div>
               <div className="history-detail">
-                <span className="history-question">{chat.question}</span>
-                <span className="history-answer">{chat.answer}</span>
-                <span className="history-meta">Conversation: {chat.conversation_id}</span>
+                <span className="history-question">{conversation.title}</span>
+                <span className="history-meta">{conversation.messageCount} messages · {conversation.role}</span>
+                <span className="history-meta">Conversation: {conversation.conversation_id.slice(0, 12)}...</span>
               </div>
             </article>
           ))}

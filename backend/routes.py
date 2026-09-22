@@ -160,12 +160,12 @@ async def upload_document(file: UploadFile = File(...),current_user=Depends(requ
 @router.get("/documents")
 def get_document(current_user=Depends(require_role("Owner","HR","Employee"))):
     documents=list(documents_collection.find({
-        "owner_id": current_user["owner_id"],
-        "allowed_roles": {"$in": [current_user["role"]]}
+        "owner_id": current_user["owner_id"]
     }))
-    for document in documents:
+    accessible_documents = filter_documents_for_role(documents, current_user["role"])
+    for document in accessible_documents:
         document["_id"]=str(document["_id"])
-    return documents
+    return accessible_documents
 
 
 @router.delete("/documents/{document_id}")
@@ -243,8 +243,7 @@ async def replace_document(document_id:str,file:UploadFile=File(...),current_use
 def ask_question(question:str,conversation_id:str=None,current_user=Depends(require_role("Owner","HR","Employee"))):
     print("Current user:",current_user)
     documents = list(documents_collection.find({
-        "owner_id": current_user["owner_id"],
-        "allowed_roles": {"$in": [current_user["role"]]}
+        "owner_id": current_user["owner_id"]
     }))
 
     accessible_documents = filter_documents_for_role(documents, current_user["role"])
@@ -278,7 +277,6 @@ def ask_question(question:str,conversation_id:str=None,current_user=Depends(requ
         history_text=history_text
     )
 
-    first_document = accessible_documents[0]
     sources=[]
     for doc in result["documents"]:
         sources.append({
@@ -294,8 +292,8 @@ def ask_question(question:str,conversation_id:str=None,current_user=Depends(requ
         "conversation_id":conversation_id,
         "question":question,
         "answer":result["answer"],
-        "document_id":first_document["document_id"],
-        "filename":first_document["filename"]
+        "document_ids":[doc["document_id"] for doc in accessible_documents],
+        "filenames":[doc["filename"] for doc in accessible_documents]
     })
 
     return {

@@ -1,4 +1,5 @@
-frontend/node_modules/
-frontend/.env.example
+node_modules/
+.env.example
 __pycache__/
 *.pyc
+dist/
