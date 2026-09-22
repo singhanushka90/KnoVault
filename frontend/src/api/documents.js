@@ -9,6 +9,12 @@ export const documentsApi = {
     return api.post('/upload_documents', formData)
   },
 
+  replace: (documentId, file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.put(`/documents/${documentId}/file`, formData)
+  },
+
   remove: (documentId) => api.delete(`/documents/${documentId}`),
 
   update: (documentId, fields) => api.put(`/documents/${documentId}`, null, {
