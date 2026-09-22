@@ -114,53 +114,37 @@ def delete_documents_vectors(document_id):
 
 
 
-def create_vector_retriever(document_ids):
-    normalized_ids = _as_list(document_ids)
-    if len(normalized_ids) == 1:
-        return vectorstore.as_retriever(search_kwargs={"k": 5, "filter": {"document_id": {"$eq": str(normalized_ids[0])}}})
-
-    return vectorstore.as_retriever(search_kwargs={"k": 5, "filter": {"document_id": {"$in": [str(doc_id) for doc_id in normalized_ids]}}})
+def create_vector_retriever(document_id):
+    return vectorstore.as_retriever(search_kwargs={"k": 5, "filter": {"document_id": {"$eq": str(document_id)}}})
 
 
-def create_bm25_retriever(file_paths, document_ids):
-    file_paths = _as_list(file_paths)
-    document_ids = _as_list(document_ids)
+def create_bm25_retriever(file_path, document_id):
+    documents = load_pdf(file_path)
+    chunks = split_documents(documents)
 
-    if len(file_paths) != len(document_ids):
-        raise ValueError("file_paths and document_ids must have the same number of entries")
+    for i, chunk in enumerate(chunks):
+        chunk.metadata["chunk_id"] = i
+        chunk.metadata["document_id"] = str(document_id)
+        chunk.metadata["source"] = file_path
 
-    all_chunks = []
-    for i, file_path in enumerate(file_paths):
-        documents = load_pdf(file_path)
-        chunks = split_documents(documents)
-
-        for j, chunk in enumerate(chunks):
-            chunk.metadata["chunk_id"] = j
-            chunk.metadata["document_id"] = str(document_ids[i])
-            chunk.metadata["source"] = file_path
-
-        all_chunks.extend(chunks)
-
-    bm25 = BM25Retriever.from_documents(all_chunks)
+    bm25 = BM25Retriever.from_documents(chunks)
     bm25.k = 5
     return bm25
 
-def create_hybrid_retriever(file_paths,document_ids):
-
-    bm25 = create_bm25_retriever(file_paths,document_ids)
-    vector_retriever=create_vector_retriever(document_ids)
-
-    hybrid_retriever = EnsembleRetriever(retrievers=[vector_retriever,bm25],weights=[0.6,0.4])
+def create_hybrid_retriever(file_path, document_id):
+    bm25 = create_bm25_retriever(file_path, document_id)
+    vector_retriever = create_vector_retriever(document_id)
+    hybrid_retriever = EnsembleRetriever(retrievers=[vector_retriever, bm25], weights=[0.6, 0.4])
     return hybrid_retriever
 
-def create_multi_query_retreiver(file_paths,document_ids):
-    hybrid_retriever = create_hybrid_retriever(file_paths,document_ids)
-    multi_query_retriever=MultiQueryRetriever.from_llm(retriever=hybrid_retriever,llm=llm)
+def create_multi_query_retreiver(file_path, document_id):
+    hybrid_retriever = create_hybrid_retriever(file_path, document_id)
+    multi_query_retriever = MultiQueryRetriever.from_llm(retriever=hybrid_retriever, llm=llm)
     return multi_query_retriever
 
-def multi_query_search(query,file_paths,document_ids):
-    multi_query_retriever= create_multi_query_retreiver(file_paths,document_ids)
-    documents=multi_query_retriever.invoke(query)
+def multi_query_search(query, file_path, document_id):
+    multi_query_retriever = create_multi_query_retreiver(file_path, document_id)
+    documents = multi_query_retriever.invoke(query)
     return documents
 
 def rerank_documents(query, documents, top_k=3):
@@ -179,16 +163,21 @@ def rerank_documents(query, documents, top_k=3):
 
     return results
 
-def retrieve_and_rerank(query,file_paths,document_ids,top_k=3):
+def retrieve_and_rerank(query, file_paths, document_ids, top_k=3):
+    file_paths = _as_list(file_paths)
+    document_ids = _as_list(document_ids)
 
-    documents = multi_query_search(query,file_paths,document_ids)
+    if len(file_paths) != len(document_ids):
+        raise ValueError("file_paths and document_ids must have the same number of entries")
 
-    ranked_documents = rerank_documents(
-        query,
-        documents,
-        top_k=top_k
-    )
+    all_documents = []
+    for file_path, document_id in zip(file_paths, document_ids):
+        try:
+            all_documents.extend(multi_query_search(query, file_path, document_id))
+        except Exception:
+            continue
 
+    ranked_documents = rerank_documents(query, all_documents, top_k=top_k)
     return ranked_documents
 
 rag_prompt = ChatPromptTemplate.from_messages([
