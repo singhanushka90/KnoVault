@@ -1,4 +1,4 @@
- KnoVault — Enterprise AI Knowledge Management Platform
+### KnoVault — Enterprise AI Knowledge Management Platform
 
 An AI-powered enterprise knowledge management platform that enables organizations to securely upload documents, retrieve relevant information, and get contextual answers through Retrieval-Augmented Generation (RAG).
 
